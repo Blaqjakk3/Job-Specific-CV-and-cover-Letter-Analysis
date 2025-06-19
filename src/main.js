@@ -72,15 +72,20 @@ const utils = {
    * Validate file type and size
    */
   validateFile(fileName, fileData) {
+    if (!fileName || !fileData) {
+      throw new Error('File name and data are required');
+    }
+
     const fileExtension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
     
     if (!config.allowedExtensions.includes(fileExtension)) {
       throw new Error('Unsupported file type. Please upload PDF, DOC, DOCX, JPG, PNG, or TXT files.');
     }
 
-    const fileSizeBytes = (fileData.length * 3) / 4;
+    // Calculate file size from base64 data
+    const fileSizeBytes = Math.ceil((fileData.length * 3) / 4);
     if (fileSizeBytes > config.maxFileSize) {
-      throw new Error('File size too large. Please upload files smaller than 5MB.');
+      throw new Error(`File size too large (${Math.round(fileSizeBytes / 1024 / 1024)}MB). Please upload files smaller than 5MB.`);
     }
 
     return { extension: fileExtension, size: fileSizeBytes };
@@ -106,7 +111,8 @@ const utils = {
    * Validate and normalize scores
    */
   normalizeScore(score) {
-    return Math.max(0, Math.min(100, score || 0));
+    const numScore = typeof score === 'number' ? score : parseFloat(score) || 0;
+    return Math.max(0, Math.min(100, numScore));
   },
 
   /**
@@ -135,6 +141,16 @@ const utils = {
     };
     
     return stageContexts[careerStage] || stageContexts['Pathfinder'];
+  },
+
+  /**
+   * Safe array join with fallback
+   */
+  safeArrayJoin(array, separator = ', ') {
+    if (!Array.isArray(array) || array.length === 0) {
+      return 'Not specified';
+    }
+    return array.filter(item => item && typeof item === 'string').join(separator) || 'Not specified';
   }
 };
 
@@ -241,9 +257,13 @@ const dataFetcher = {
   },
 
   /**
-   * Fetch employer information by ID
+   * Fetch employer information by ID with improved error handling
    */
   async getEmployer(employerId) {
+    if (!employerId) {
+      return null;
+    }
+
     try {
       const employer = await databases.getDocument(
         config.databaseId,
@@ -277,18 +297,18 @@ CV CONTENT:
 ${cvText}
 
 TALENT PROFILE:
-- Name: ${talent.fullname}
-- Career Stage: ${talent.careerStage} (${careerStageContext.description})
+- Name: ${talent.fullname || 'Not provided'}
+- Career Stage: ${talent.careerStage || 'Not specified'} (${careerStageContext.description})
 - Career Focus: ${careerStageContext.focus}
-- Profile Skills: ${(talent.skills || []).join(', ') || 'None listed'}
-- Education: ${(talent.degrees || []).join(', ') || 'None listed'}
+- Profile Skills: ${utils.safeArrayJoin(talent.skills)}
+- Education: ${utils.safeArrayJoin(talent.degrees)}
 
 JOB REQUIREMENTS:
-- Position: ${job.name}
+- Position: ${job.name || 'Not specified'}
 - Company: ${employer?.name || 'Company name not available'}
-- Seniority Level: ${job.seniorityLevel}
-- Required Skills: ${(job.skills || []).join(', ') || 'Not specified'}
-- Required Degrees: ${(job.Degrees || []).join(', ') || 'Not specified'}
+- Seniority Level: ${job.seniorityLevel || 'Not specified'}
+- Required Skills: ${utils.safeArrayJoin(job.skills)}
+- Required Degrees: ${utils.safeArrayJoin(job.Degrees)}
 - Key Responsibilities: ${job.responsibilities || 'Not detailed'}
 
 CAREER STAGE PRIORITIES: ${careerStageContext.priorities.join(', ')}
@@ -300,7 +320,7 @@ Provide analysis in this JSON format with concise, actionable insights:
   "careerStageAlignment": {
     "score": 80,
     "isAppropriateLevel": true,
-    "stageSpecificInsights": "Strong alignment for ${talent.careerStage} stage professional",
+    "stageSpecificInsights": "Strong alignment for ${talent.careerStage || 'current'} stage professional",
     "growthOpportunity": "Role offers good advancement potential"
   },
   "skillsAnalysis": {
@@ -340,7 +360,7 @@ Provide analysis in this JSON format with concise, actionable insights:
   "applicationReadiness": 78
 }
 
-Keep insights concise and focused on actionable guidance for this ${talent.careerStage} stage professional.`;
+Keep insights concise and focused on actionable guidance for this ${talent.careerStage || 'current'} stage professional.`;
 
       const result = await model.generateContent(prompt);
       const responseText = result.response.text();
@@ -348,12 +368,22 @@ Keep insights concise and focused on actionable guidance for this ${talent.caree
       const cleanedJson = utils.extractAndCleanJSON(responseText);
       const analysis = JSON.parse(cleanedJson);
       
-      // Normalize scores
-      if (analysis.overallMatchScore) analysis.overallMatchScore = utils.normalizeScore(analysis.overallMatchScore);
-      if (analysis.careerStageAlignment?.score) analysis.careerStageAlignment.score = utils.normalizeScore(analysis.careerStageAlignment.score);
-      if (analysis.skillsAnalysis?.matchPercentage) analysis.skillsAnalysis.matchPercentage = utils.normalizeScore(analysis.skillsAnalysis.matchPercentage);
-      if (analysis.educationMatch?.degreeAlignment) analysis.educationMatch.degreeAlignment = utils.normalizeScore(analysis.educationMatch.degreeAlignment);
-      if (analysis.applicationReadiness) analysis.applicationReadiness = utils.normalizeScore(analysis.applicationReadiness);
+      // Normalize scores with safe property access
+      if (analysis.overallMatchScore !== undefined) {
+        analysis.overallMatchScore = utils.normalizeScore(analysis.overallMatchScore);
+      }
+      if (analysis.careerStageAlignment?.score !== undefined) {
+        analysis.careerStageAlignment.score = utils.normalizeScore(analysis.careerStageAlignment.score);
+      }
+      if (analysis.skillsAnalysis?.matchPercentage !== undefined) {
+        analysis.skillsAnalysis.matchPercentage = utils.normalizeScore(analysis.skillsAnalysis.matchPercentage);
+      }
+      if (analysis.educationMatch?.degreeAlignment !== undefined) {
+        analysis.educationMatch.degreeAlignment = utils.normalizeScore(analysis.educationMatch.degreeAlignment);
+      }
+      if (analysis.applicationReadiness !== undefined) {
+        analysis.applicationReadiness = utils.normalizeScore(analysis.applicationReadiness);
+      }
       
       return analysis;
       
@@ -377,13 +407,13 @@ COVER LETTER CONTENT:
 ${coverLetterText}
 
 TALENT PROFILE:
-- Name: ${talent.fullname}
-- Career Stage: ${talent.careerStage} (${careerStageContext.description})
+- Name: ${talent.fullname || 'Not provided'}
+- Career Stage: ${talent.careerStage || 'Not specified'} (${careerStageContext.description})
 
 JOB DETAILS:
-- Position: ${job.name}
+- Position: ${job.name || 'Not specified'}
 - Company: ${employer?.name || 'Company name not available'}
-- Required Skills: ${(job.skills || []).join(', ') || 'Not specified'}
+- Required Skills: ${utils.safeArrayJoin(job.skills)}
 
 CAREER STAGE CONTEXT: ${careerStageContext.focus}
 
@@ -393,7 +423,7 @@ Analyze and provide feedback in this JSON format:
   "overallEffectiveness": 75,
   "careerStageAppropriate": {
     "score": 80,
-    "toneAlignment": "Professional tone appropriate for ${talent.careerStage} stage",
+    "toneAlignment": "Professional tone appropriate for ${talent.careerStage || 'current'} stage",
     "contentLevel": "Content demonstrates suitable experience level",
     "growthMindset": "Shows learning orientation suitable for career stage"
   },
@@ -433,7 +463,7 @@ Analyze and provide feedback in this JSON format:
   ]
 }
 
-Provide specific, actionable feedback for this ${talent.careerStage} professional.`;
+Provide specific, actionable feedback for this ${talent.careerStage || 'current'} professional.`;
 
       const result = await model.generateContent(prompt);
       const responseText = result.response.text();
@@ -441,20 +471,52 @@ Provide specific, actionable feedback for this ${talent.careerStage} professiona
       const cleanedJson = utils.extractAndCleanJSON(responseText);
       const analysis = JSON.parse(cleanedJson);
       
-      // Normalize scores
-      if (analysis.overallEffectiveness) analysis.overallEffectiveness = utils.normalizeScore(analysis.overallEffectiveness);
-      if (analysis.careerStageAppropriate?.score) analysis.careerStageAppropriate.score = utils.normalizeScore(analysis.careerStageAppropriate.score);
-      if (analysis.contentQuality?.jobAlignment) analysis.contentQuality.jobAlignment = utils.normalizeScore(analysis.contentQuality.jobAlignment);
-      if (analysis.contentQuality?.companyResearch) analysis.contentQuality.companyResearch = utils.normalizeScore(analysis.contentQuality.companyResearch);
-      if (analysis.communicationEffectiveness?.clarity) analysis.communicationEffectiveness.clarity = utils.normalizeScore(analysis.communicationEffectiveness.clarity);
-      if (analysis.communicationEffectiveness?.persuasiveness) analysis.communicationEffectiveness.persuasiveness = utils.normalizeScore(analysis.communicationEffectiveness.persuasiveness);
-      if (analysis.communicationEffectiveness?.professionalTone) analysis.communicationEffectiveness.professionalTone = utils.normalizeScore(analysis.communicationEffectiveness.professionalTone);
+      // Normalize scores with safe property access
+      if (analysis.overallEffectiveness !== undefined) {
+        analysis.overallEffectiveness = utils.normalizeScore(analysis.overallEffectiveness);
+      }
+      if (analysis.careerStageAppropriate?.score !== undefined) {
+        analysis.careerStageAppropriate.score = utils.normalizeScore(analysis.careerStageAppropriate.score);
+      }
+      if (analysis.contentQuality?.jobAlignment !== undefined) {
+        analysis.contentQuality.jobAlignment = utils.normalizeScore(analysis.contentQuality.jobAlignment);
+      }
+      if (analysis.contentQuality?.companyResearch !== undefined) {
+        analysis.contentQuality.companyResearch = utils.normalizeScore(analysis.contentQuality.companyResearch);
+      }
+      if (analysis.communicationEffectiveness) {
+        ['clarity', 'persuasiveness', 'professionalTone'].forEach(key => {
+          if (analysis.communicationEffectiveness[key] !== undefined) {
+            analysis.communicationEffectiveness[key] = utils.normalizeScore(analysis.communicationEffectiveness[key]);
+          }
+        });
+      }
 
       return analysis;
       
     } catch (error) {
       console.error('Cover letter analysis error:', error);
       throw new Error(`Failed to analyze cover letter: ${error.message}`);
+    }
+  }
+};
+
+/**
+ * File Upload Helper
+ */
+const fileUploader = {
+  async uploadTemporaryFile(fileBuffer, fileName, talentId) {
+    try {
+      const tempFile = await storage.createFile(
+        config.storageId,
+        ID.unique(),
+        fileBuffer,
+        [`read("user:${talentId}")`, `delete("user:${talentId}")`]
+      );
+      return tempFile.$id;
+    } catch (error) {
+      console.warn(`Could not upload temporary file ${fileName}: ${error.message}`);
+      return null;
     }
   }
 };
@@ -479,9 +541,12 @@ module.exports = async function({ req, res, log, error }) {
       }, 500);
     }
 
-    // Parse request body
+    // Parse request body with improved error handling
     let requestData;
     try {
+      if (!req.body) {
+        throw new Error('Request body is empty');
+      }
       requestData = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     } catch (parseError) {
       error('Failed to parse request body:', parseError);
@@ -522,31 +587,47 @@ module.exports = async function({ req, res, log, error }) {
     }
 
     // Validate files if provided
-    if (cvData && cvFileName) {
-      utils.validateFile(cvFileName, cvData);
-    }
-    if (coverLetterData && coverLetterFileName) {
-      utils.validateFile(coverLetterFileName, coverLetterData);
-    }
-
-    // Fetch required data
-    log('Fetching talent, job, and employer information...');
-    const [talent, job] = await Promise.all([
-      dataFetcher.getTalent(talentId),
-      dataFetcher.getJob(jobId)
-    ]);
-
-    let employer = null;
-    if (job.employer) {
-      try {
-        employer = await dataFetcher.getEmployer(job.employer);
-      } catch (employerError) {
-        log(`Warning: Could not fetch employer: ${employerError.message}`);
+    try {
+      if (cvData && cvFileName) {
+        utils.validateFile(cvFileName, cvData);
       }
+      if (coverLetterData && coverLetterFileName) {
+        utils.validateFile(coverLetterFileName, coverLetterData);
+      }
+    } catch (validationError) {
+      return res.json({
+        success: false,
+        error: validationError.message,
+        statusCode: 400
+      }, 400);
+    }
+
+    // Fetch required data with improved error handling
+    log('Fetching talent, job, and employer information...');
+    let talent, job, employer = null;
+    
+    try {
+      [talent, job] = await Promise.all([
+        dataFetcher.getTalent(talentId),
+        dataFetcher.getJob(jobId)
+      ]);
+    } catch (fetchError) {
+      return res.json({
+        success: false,
+        error: fetchError.message,
+        statusCode: 404
+      }, 404);
+    }
+
+    // Fetch employer information if available
+    if (job.employer) {
+      employer = await dataFetcher.getEmployer(job.employer);
     }
 
     log(`Successfully fetched: Talent: ${talent.fullname} (${talent.careerStage}), Job: ${job.name}`);
-    if (employer) log(`Employer: ${employer.name}`);
+    if (employer) {
+      log(`Employer: ${employer.name}`);
+    }
 
     // Process documents and perform analysis
     const results = {
@@ -560,18 +641,11 @@ module.exports = async function({ req, res, log, error }) {
       try {
         const cvBuffer = Buffer.from(cvData, 'base64');
         
-        // Upload temporary file for processing
-        try {
-          const tempCvFile = await storage.createFile(
-            config.storageId,
-            ID.unique(),
-            cvBuffer,
-            [`read("user:${talentId}")`, `delete("user:${talentId}")`]
-          );
-          uploadedFileIds.push(tempCvFile.$id);
-          log(`CV uploaded temporarily: ${tempCvFile.$id}`);
-        } catch (uploadError) {
-          log(`Warning: Could not upload CV to storage: ${uploadError.message}`);
+        // Upload temporary file for processing (optional)
+        const tempFileId = await fileUploader.uploadTemporaryFile(cvBuffer, cvFileName, talentId);
+        if (tempFileId) {
+          uploadedFileIds.push(tempFileId);
+          log(`CV uploaded temporarily: ${tempFileId}`);
         }
 
         // Extract text from CV
@@ -584,7 +658,11 @@ module.exports = async function({ req, res, log, error }) {
 
       } catch (cvError) {
         error(`CV processing failed: ${cvError.message}`);
-        throw cvError; // Don't provide fallback analysis as requested
+        return res.json({
+          success: false,
+          error: `CV processing failed: ${cvError.message}`,
+          statusCode: 500
+        }, 500);
       }
     }
 
@@ -594,18 +672,11 @@ module.exports = async function({ req, res, log, error }) {
       try {
         const coverLetterBuffer = Buffer.from(coverLetterData, 'base64');
         
-        // Upload temporary file for processing
-        try {
-          const tempCoverLetterFile = await storage.createFile(
-            config.storageId,
-            ID.unique(),
-            coverLetterBuffer,
-            [`read("user:${talentId}")`, `delete("user:${talentId}")`]
-          );
-          uploadedFileIds.push(tempCoverLetterFile.$id);
-          log(`Cover letter uploaded temporarily: ${tempCoverLetterFile.$id}`);
-        } catch (uploadError) {
-          log(`Warning: Could not upload cover letter to storage: ${uploadError.message}`);
+        // Upload temporary file for processing (optional)
+        const tempFileId = await fileUploader.uploadTemporaryFile(coverLetterBuffer, coverLetterFileName, talentId);
+        if (tempFileId) {
+          uploadedFileIds.push(tempFileId);
+          log(`Cover letter uploaded temporarily: ${tempFileId}`);
         }
 
         // Extract text from cover letter
@@ -627,7 +698,11 @@ module.exports = async function({ req, res, log, error }) {
 
       } catch (coverLetterError) {
         error(`Cover letter processing failed: ${coverLetterError.message}`);
-        throw coverLetterError; // Don't provide fallback analysis as requested
+        return res.json({
+          success: false,
+          error: `Cover letter processing failed: ${coverLetterError.message}`,
+          statusCode: 500
+        }, 500);
       }
     }
 
@@ -636,17 +711,17 @@ module.exports = async function({ req, res, log, error }) {
     if (results.cv && results.coverLetter) {
       const careerStageContext = utils.getCareerStageContext(talent.careerStage);
       
+      const cvScore = results.cv.overallMatchScore || 0;
+      const clScore = results.coverLetter.overallEffectiveness || 0;
+      const cvCareerScore = results.cv.careerStageAlignment?.score || 50;
+      const clCareerScore = results.coverLetter.careerStageAppropriate?.score || 50;
+      
       combinedInsights = {
-        overallApplicationScore: Math.round(
-          (results.cv.overallMatchScore + results.coverLetter.overallEffectiveness) / 2
-        ),
+        overallApplicationScore: Math.round((cvScore + clScore) / 2),
         careerStageReadiness: {
-          score: Math.round(
-            ((results.cv.careerStageAlignment?.score || 50) + 
-             (results.coverLetter.careerStageAppropriate?.score || 50)) / 2
-          ),
+          score: Math.round((cvCareerScore + clCareerScore) / 2),
           alignment: `Strong alignment for ${talent.careerStage} career stage`,
-          recommendation: results.cv.overallMatchScore >= 70 && results.coverLetter.overallEffectiveness >= 70 
+          recommendation: cvScore >= 70 && clScore >= 70 
             ? "Application ready - good fit for career stage"
             : "Consider improvements before submission"
         },
@@ -676,16 +751,16 @@ module.exports = async function({ req, res, log, error }) {
         combinedInsights: combinedInsights
       },
       careerStageContext: {
-        stage: talent.careerStage,
+        stage: talent.careerStage || 'Not specified',
         description: careerStageContext.description,
         focus: careerStageContext.focus,
         priorities: careerStageContext.priorities
       },
       jobContext: {
-        position: job.name,
+        position: job.name || 'Not specified',
         company: employer?.name || 'Company information not available',
-        level: job.seniorityLevel,
-        industry: job.industry
+        level: job.seniorityLevel || 'Not specified',
+        industry: job.industry || 'Not specified'
       },
       summary: {
         documentsAnalyzed: {
