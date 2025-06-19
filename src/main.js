@@ -21,7 +21,7 @@ const config = {
   databaseId: 'career4me',
   jobsCollectionId: 'jobs',
   talentsCollectionId: 'talents',
-  employersCollectionId: 'employers',
+  employersCollectionId: '67d870d800046e4c2a61',
   storageId: 'avatars',
   allowedExtensions: ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx', '.txt'],
   maxFileSize: 5 * 1024 * 1024, // 5MB
