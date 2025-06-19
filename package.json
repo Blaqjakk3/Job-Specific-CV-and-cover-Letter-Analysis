@@ -1,0 +1,20 @@
+{
+  "name": "job-specific-analysis",
+  "version": "1.0.0",
+  "description": "Upload and analyze CVs or Resumes per job description using Gemini AI",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.19.0",
+    "node-appwrite": "^13.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["appwrite", "gemini", "ai", "cv-analysis"],
+  "author": "Samuel",
+  "license": "ISC"
+}
