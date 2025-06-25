@@ -18,7 +18,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Configuration
 const config = {
-  databaseId: 'career4me',
+  databaseId: 'career4m',
   jobsCollectionId: 'jobs',
   talentsCollectionId: 'talents',
   employersCollectionId: '67d870d800046e4c2a61',
